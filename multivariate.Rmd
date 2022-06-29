@@ -1,0 +1,236 @@
+---
+title: "multivariables final report"
+author: "Lee Tung"
+date: "2021/12/17"
+output: html_document
+---
+
+```{r}
+u1 <- runif(1000,0,1)
+u2 <- runif(1000,0,1)
+X <- sqrt(-2*log(u2))*cos(2*pi*u1)
+Y <- sqrt(-2*log(u2))*sin(2*pi*u1)
+plot(sort(X))
+hist(X)
+plot(u1)
+```
+
+```{r}
+rm(list = ls())
+data <- read.csv(file="C:/5th/multivariate/final_report/train.csv", header=T) 
+names(data)
+```
+## missing values
+```{r}
+count_missing <- data.frame(Name='name', count=0)
+n <- 0
+newdata <- data
+drop <- c()
+chr <- c()
+for(i in names(data)){
+  n = n+1
+  missing <- sum(is.na(data[,n]))
+  if(missing>0){
+    count_missing<-rbind(count_missing,c(i, missing))
+    drop <- c(drop,i)
+  }
+}
+count_missing <- count_missing[-c(1),]
+#原始train去除有 missing value 的 columns
+newdata = newdata[,!(names(newdata) %in% drop)]
+
+#numerate 後的資料去除有 missing value 的 columns
+outdata <- read.csv(file="C:/5th/multivariate/final_report/outdata.csv", header=T) 
+#是已經處理過類別變數的資料(因為不會用R處理，所以先用python處理過)
+#去除有 missing value 的 columns
+donedata <- outdata[,!(names(outdata) %in% drop)]
+#去除第一行
+donedata <- donedata[,-1]
+names(donedata)
+```
+donedata 去除以上的 columns  
+完成資料整理
+```{r}
+#之前做分析時這些 column 對 price 的相關性較高
+newcol <- c('OverallQual','Neighborhood','GrLivArea','GarageCars','TotalBsmtSF','GarageArea','YearBuilt','KitchenQual','ExterQual','BsmtQual','X1stFlrSF','GarageYrBlt','MSSubClass','SalePrice')#,'SalePrice'
+newdata2 <- subset(outdata, select = newcol)
+donedata2 <- newdata2[,!(names(newdata2) %in% drop)]
+names(donedata2)
+```
+donedata2 是之前做分析時這些 column 對 price 的相關性較高 
+## 看分布
+```{r}
+library(ggplot2)
+library(cowplot)
+my_plots <- lapply(names(donedata2), function(var_x){
+  p <- 
+    ggplot(donedata2) +
+    aes_string(var_x)
+
+  if(is.numeric(donedata2[[var_x]])) {
+    p <- p + geom_density()
+
+  } else {
+    p <- p + geom_bar()
+  } 
+
+})
+plot_grid(plotlist = my_plots)
+
+hist(donedata2$SalePrice,
+  xlab = "SalePrice",
+  main = "Histogram of SalePrice",
+  breaks = sqrt(nrow(donedata2))
+) # set number of bins
+
+upper_bound <- quantile(donedata2$SalePrice, 0.975)
+outlier_ind <- which(donedata2$SalePrice > upper_bound)
+
+donedata2[outlier_ind, ]
+donedata2 <- donedata2[-outlier_ind,]
+```
+
+## PCA
+```{r}
+PCA <- princomp(donedata)
+biplot(PCA, main = 'donedata')
+PCAnew <- princomp(donedata2[,1:11], scale = TRUE)
+plot(PCAnew$scores[,1], PCAnew$scores[,2])
+biplot(PCAnew, main = 'donedata2')
+```
+```{r}
+PCAnew$loadings
+PCAnew$center
+```
+
+```{r}
+#install.packages("devtools")
+#library("devtools")
+#install_github("kassambara/factoextra")
+library("factoextra")
+# Graph of individuals
+fviz_pca_ind(PCAnew, label="none")
+fviz_pca_ind(PCAnew, label="none", habillage=donedata2$OverallQual, addEllipses=TRUE, ellipse.level=0.95)
+fviz_pca_biplot(PCAnew, label ="var")
+fviz_pca_biplot(PCAnew)
+fviz_pca_var(PCAnew)
+```
+```{r}
+devtools::install_github("sinhrks/ggfortify")
+library(ggfortify)
+ggplot2::autoplot(stats::prcomp(donedata2[,1:11], scale=TRUE), label = FALSE, loadings.label = TRUE)
+PCAnew1 <- prcomp(donedata2, scale=TRUE)
+screeplot(PCAnew, type = 'l')
+```
+
+## FA
+```{r}
+#n=3
+library(psych)
+cor <- cor(donedata2[,1:11])
+#bypca <- fa(donedata2[,1:11], 4, fm="pa", rotate="varimax")
+bymle <- factanal(donedata2[,1:11], factors = 3, rotation="promax", scores = "regression")
+print(bymle$loadings)
+plot(bymle$loadings[,1], bymle$loadings[,2], type="n", main = 'PCA method')
+text(bymle$loadings[,1], bymle$loadings[,2], labels=rownames(bymle$loadings))
+```
+
+```{r}
+#n=2
+bymle2 <- factanal(donedata2[,1:11], factors = 2, rotation="promax", scores = "regression")
+print(bymle2$loadings)
+plot(bymle2$loadings[,1], bymle2$loadings[,2], type="n", main = 'PCA method n=2')
+text(bymle2$loadings[,1], bymle2$loadings[,2], labels=rownames(bymle2$loadings))
+```
+
+## Kmeams
+```{r}
+kms <- kmeans(donedata2,centers=6)
+#dimnames(donedata2)[[1]][kms$cluster==1]
+#row.names(donedata2)[kms$cluster==1]
+
+dat_dist <- dist(donedata2,method='euclidean')
+mds <- cmdscale(dat_dist,k=2)
+#mds
+plot(mds[,1],mds[,2],xlab = 'Coordinate 1',ylab = 'Coordinate 2',main='Metric MDS',type='n')
+text(mds[,1],mds[,2],labels=row.names(donedata2),cex=.7)
+
+#用圖顯示三個區域
+plot(mds[,1],mds[,2],xlab = 'Coordinate 1',ylab = 'Coordinate 2',main='Metric MDS',type='n')
+for(i in 1:6){
+kms_cl <- kms$cluster==i
+text(mds[,1][kms_cl],mds[,2][kms_cl],labels=row.names(donedata2)[kms_cl],cex=.5,col=i+1)
+}
+```
+
+```{r}
+library(scatterplot3d)
+mds3 <- cmdscale(dat_dist,k=3)
+scatterplot3d(x=mds3[,1],y=mds3[,2],z=mds3[,3])
+```
+
+```{r}
+#跑不出來
+#library(MASS)
+#nmds <- isoMDS(dat_dist,k=2)
+#plot(nmds$points[,1],nmds$points[,2],xlab = 'Coordinate 1',ylab = 'Coordinate 2',main='NonMetric MDS')
+```
+
+```{r}
+library(MASS)
+#prop.table(caith, 1)
+#class(caith)
+#要轉成matrix才能用
+caith_m <- as.matrix(donedata2)
+prop.table(caith_m, 1) #row percentage
+
+prop.table(caith_m, 2) #column percentage
+
+corresp(caith)
+corresp(caith, nf=2)
+biplot(corresp(caith_m, nf=2))
+plot(corresp(caith_m, nf=1)); title('symmetric')
+plot(corresp(caith_m, nf=2), type="rows"); title('rows')
+plot(corresp(caith_m, nf=2), type="col"); title('columns')
+
+library(ca)
+
+fit <- ca(donedata2)
+plot(fit)
+```
+
+
+
+## hierachical
+```{r}
+donedata2_noprice <- donedata2[,-12]
+E.dist <- dist(donedata2, method="euclidean") # 歐式距離
+M.dist <- dist(donedata2_noprice, method="manhattan") # 曼哈頓距離
+
+par(mfrow=c(1,2)) # 讓圖片以1x2的方式呈現
+
+# 使用歐式距離進行分群
+h.E.cluster <- hclust(E.dist)
+plot(h.E.cluster, xlab="歐式距離")
+
+# 使用曼哈頓距離進行分群
+h.M.cluster <- hclust(M.dist) 
+plot(h.M.cluster, xlab="曼哈頓距離")
+
+h.cluster <- hclust(E.dist, method="ward.D2") # 華德法
+cut.h.cluster <- cutree(h.cluster, k=10)  # 分成三群
+table(cut.h.cluster, donedata2$ExterQual)  
+
+plot(donedata2$ExterQual,donedata2$SalePrice)
+
+keep.cols <- which(!names(wbInfo) %in% c("iso2c", "country", "year", + "capital", "iso3c")) 
+wbDaisy <- daisy(x=wbInfo[, keep.cols])
+
+wbH <- hclust(wbDaisy)
+plot(wbH)
+```
+
+
+
+
+
